@@ -67,23 +67,35 @@
   });
 
   // ---- 차트 공통 ----
+  Chart.register(ChartDataLabels);
   Chart.defaults.font.family = '"Pretendard", sans-serif';
   Chart.defaults.color = "#6b7589";
+  Chart.defaults.set("plugins.datalabels", { display: false }); // 차트별 명시 설정만 표시
 
   const monthlyChart = new Chart(document.getElementById("monthlyChart"), {
     data: {
       labels: MONTHS.map((m) => `${m}월`),
       datasets: [
-        { type: "bar", label: "거래량(건)", data: [], backgroundColor: "#c7d7f8", yAxisID: "y", order: 2, borderRadius: 4 },
-        { type: "line", label: "평균 평당금액(만원)", data: [], borderColor: "#f59e0b", backgroundColor: "#f59e0b", yAxisID: "y2", order: 1, tension: 0.3, pointRadius: 4 },
+        { type: "bar", label: "거래량(건)", data: [], backgroundColor: "#c7d7f8", yAxisID: "y", order: 2, borderRadius: 4,
+          datalabels: { display: true, anchor: "center", align: "center", color: "#3552a0", font: { size: 10, weight: 700 }, formatter: (v) => comma(v) } },
+        { type: "line", label: "평균 평당금액(만원)", data: [], borderColor: "#f59e0b", backgroundColor: "#f59e0b", yAxisID: "y2", order: 1, tension: 0.3, pointRadius: 4,
+          datalabels: { display: true, offset: 8, color: "#d97706", font: { size: 10.5, weight: 700 },
+            align: (ctx) => {
+              const vals = ctx.dataset.data.filter((x) => x != null);
+              const min = Math.min(...vals), max = Math.max(...vals);
+              const v = ctx.dataset.data[ctx.dataIndex];
+              return v != null && v < min + 0.15 * (max - min) ? "bottom" : "top"; // 바닥권 포인트는 아래로 — 막대 라벨과 충돌 회피
+            },
+            backgroundColor: "rgba(255,255,255,.75)", borderRadius: 4, padding: { top: 2, bottom: 1, left: 3, right: 3 },
+            formatter: (v) => (v == null ? "" : comma(v)) } },
       ],
     },
     options: {
       responsive: true, maintainAspectRatio: false,
       interaction: { mode: "index", intersect: false },
       scales: {
-        y: { position: "left", title: { display: true, text: "거래량(건)" }, grid: { color: "#eef1f6" } },
-        y2: { position: "right", title: { display: true, text: "평당금액(만원)" }, grid: { drawOnChartArea: false } },
+        y: { position: "left", title: { display: true, text: "거래량(건)" }, grid: { color: "#eef1f6" }, grace: "12%" },
+        y2: { position: "right", title: { display: true, text: "평당금액(만원)" }, grid: { drawOnChartArea: false }, grace: "15%" },
       },
       plugins: { legend: { position: "top" } },
     },
@@ -94,10 +106,11 @@
     data: { labels: [], datasets: [{ label: "평균 평당금액(만원)", data: [], backgroundColor: [], borderRadius: 4 }] },
     options: {
       indexAxis: "y", responsive: true, maintainAspectRatio: false,
-      scales: { x: { grid: { color: "#eef1f6" } }, y: { grid: { display: false } } },
+      scales: { x: { grid: { color: "#eef1f6" }, grace: "12%" }, y: { grid: { display: false } } },
       plugins: {
         legend: { display: false },
         tooltip: { callbacks: { label: (c) => ` ${comma(c.parsed.x)} 만원/평` } },
+        datalabels: { display: true, anchor: "end", align: "end", offset: 2, color: "#3c465c", font: { size: 10.5 }, formatter: (v) => comma(v) },
       },
       onClick: (_, els) => {
         if (!els.length) return;
@@ -116,10 +129,24 @@
     type: "doughnut",
     data: { labels: TYPES, datasets: [{ data: [], backgroundColor: TYPES.map((t) => TYPE_COLORS[t]), borderWidth: 2 }] },
     options: {
-      responsive: true, maintainAspectRatio: false, cutout: "58%",
+      responsive: true, maintainAspectRatio: false, cutout: "52%",
       plugins: {
         legend: { position: "right" },
         tooltip: { callbacks: { label: (c) => ` ${c.label}: ${comma(c.parsed)}건 (${(c.parsed / c.dataset.data.reduce((a, b) => a + b, 0) * 100).toFixed(1)}%)` } },
+        datalabels: {
+          display: (ctx) => {
+            const data = ctx.dataset.data;
+            const total = data.reduce((a, b) => a + b, 0);
+            return total > 0 && data[ctx.dataIndex] / total >= 0.05; // 5% 미만 조각은 라벨 생략
+          },
+          color: "#fff",
+          font: { size: 11, weight: 700 },
+          formatter: (v, ctx) => {
+            const total = ctx.dataset.data.reduce((a, b) => a + b, 0);
+            return `${(v / total * 100).toFixed(1)}%\n${comma(v)}건`;
+          },
+          textAlign: "center",
+        },
       },
     },
   });
@@ -129,8 +156,11 @@
     data: { labels: DOW, datasets: [{ label: "거래량(건)", data: [], backgroundColor: DOW.map((d) => (d === "토" || d === "일" ? "#f59e0b" : "#2f6fed")), borderRadius: 4 }] },
     options: {
       responsive: true, maintainAspectRatio: false,
-      scales: { y: { grid: { color: "#eef1f6" } }, x: { grid: { display: false } } },
-      plugins: { legend: { display: false } },
+      scales: { y: { grid: { color: "#eef1f6" }, grace: "12%" }, x: { grid: { display: false } } },
+      plugins: {
+        legend: { display: false },
+        datalabels: { display: true, anchor: "end", align: "end", offset: -2, color: "#3c465c", font: { size: 11, weight: 600 }, formatter: (v) => comma(v) },
+      },
     },
   });
 
