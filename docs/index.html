@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>서울 아파트 실거래 추이 대시보드 — 2022</title>
+<meta name="description" content="2022년 서울시 아파트 매매 실거래 12,651건을 구·동·면적유형·월별로 탐색하는 인터랙티브 대시보드">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%8F%A2%3C/text%3E%3C/svg%3E">
+<link rel="preconnect" href="https://cdn.jsdelivr.net">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css">
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.9/dist/chart.umd.min.js"></script>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<header class="hero">
+  <div class="container">
+    <p class="hero-badge">국토교통부 아파트 매매 실거래가 공개 데이터 · 2022년 서울특별시</p>
+    <h1>내 집 마련, 숫자로 준비하기</h1>
+    <p class="hero-sub">
+      "지금 보고 있는 동네, 작년에 실제로 얼마에 거래됐을까?"<br>
+      서울 아파트 매매 실거래 <strong id="heroCount">12,651</strong>건을 구·동·평형·시기별로 직접 탐색해보세요.
+    </p>
+  </div>
+</header>
+
+<nav class="filters container" aria-label="데이터 필터">
+  <div class="filter-group">
+    <label for="guSelect">구</label>
+    <select id="guSelect"><option value="">서울 전체</option></select>
+  </div>
+  <div class="filter-group">
+    <label for="dongSelect">동</label>
+    <select id="dongSelect" disabled><option value="">전체</option></select>
+  </div>
+  <div class="filter-group">
+    <label>면적 유형 <span class="hint">(전용면적 기준)</span></label>
+    <div class="chips" id="typeChips">
+      <button class="chip active" data-type="소형">소형 ≤60㎡</button>
+      <button class="chip active" data-type="중형">중형 ≤85㎡</button>
+      <button class="chip active" data-type="중대형">중대형 ≤102㎡</button>
+      <button class="chip active" data-type="대형">대형 &gt;102㎡</button>
+    </div>
+  </div>
+  <button id="resetBtn" class="reset-btn">필터 초기화</button>
+</nav>
+
+<main class="container">
+
+  <section class="kpis" id="kpis">
+    <div class="kpi"><span class="kpi-label">거래 건수</span><strong id="kpiCount">—</strong><span class="kpi-unit">건</span></div>
+    <div class="kpi"><span class="kpi-label">평균 거래금액</span><strong id="kpiMean">—</strong><span class="kpi-unit"></span></div>
+    <div class="kpi"><span class="kpi-label">거래금액 중앙값</span><strong id="kpiMedian">—</strong><span class="kpi-unit"></span></div>
+    <div class="kpi"><span class="kpi-label">평균 평당금액</span><strong id="kpiPyeong">—</strong><span class="kpi-unit">만원/평</span></div>
+  </section>
+
+  <section class="card">
+    <div class="card-head">
+      <h2>월별 거래 추이</h2>
+      <p>거래량(막대)과 평균 평당금액(선)을 함께 보면 2022년 시장 흐름이 보입니다.</p>
+    </div>
+    <div class="chart-wrap tall"><canvas id="monthlyChart"></canvas></div>
+    <p class="nb-link">📓 노트북 연결: <code>df["계약월"] = df["계약일"].dt.month</code> → <code>groupby("계약월")</code></p>
+  </section>
+
+  <div class="grid-2">
+    <section class="card">
+      <div class="card-head">
+        <h2>구별 평균 평당금액</h2>
+        <p>막대를 클릭하면 해당 구로 필터링됩니다.</p>
+      </div>
+      <div class="chart-wrap xtall"><canvas id="guChart"></canvas></div>
+      <p class="nb-link">📓 <code>df.groupby("구")[["평당금액"]].mean()</code></p>
+    </section>
+
+    <div class="stack">
+      <section class="card">
+        <div class="card-head">
+          <h2>면적 유형별 거래 비중</h2>
+          <p>서울 거래의 대부분은 어떤 평형대일까요?</p>
+        </div>
+        <div class="chart-wrap"><canvas id="typeChart"></canvas></div>
+        <p class="nb-link">📓 <code>df["유형"] = df["전용면적"].apply(category)</code></p>
+      </section>
+      <section class="card">
+        <div class="card-head">
+          <h2>요일별 거래량</h2>
+          <p>계약은 주로 어떤 요일에 이루어질까요?</p>
+        </div>
+        <div class="chart-wrap"><canvas id="dowChart"></canvas></div>
+        <p class="nb-link">📓 <code>df["계약요일"] = df["계약일"].dt.dayofweek</code></p>
+      </section>
+    </div>
+  </div>
+
+  <div class="grid-2">
+    <section class="card">
+      <div class="card-head">
+        <h2 id="dongRankTitle">동별 평당금액 랭킹</h2>
+        <p>선택한 지역에서 평당금액 평균이 높은 동 순위입니다.</p>
+      </div>
+      <div class="table-wrap">
+        <table id="dongTable">
+          <thead><tr><th>#</th><th>구</th><th>동</th><th class="num">평균 평당금액</th><th class="num">거래</th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+      <p class="nb-link">📓 <code>df.groupby(["구","동"])[["평당금액"]].mean().sort_values(...)</code></p>
+    </section>
+
+    <section class="card">
+      <div class="card-head sticky-toggle">
+        <h2>최고가 거래 TOP 10</h2>
+        <div class="toggle" role="tablist">
+          <button id="sortPrice" class="active">거래금액순</button>
+          <button id="sortPyeong">평당금액순</button>
+        </div>
+      </div>
+      <div class="table-wrap">
+        <table id="topTable">
+          <thead><tr><th>#</th><th>단지명</th><th>위치</th><th class="num">평</th><th class="num">거래금액</th><th class="num">평당</th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+      <p class="nb-link">📓 <code>df.sort_values("거래금액(만원)", ascending=False).head(10)</code> — 두 정렬의 결과가 어떻게 다른지 비교해보세요.</p>
+    </section>
+  </div>
+
+  <section class="card quiz" id="quizCard">
+    <div class="card-head">
+      <h2>🎯 미션 체크 — 노트북 마지막 문제</h2>
+      <p>서초구의 동 중 <strong>평당금액 평균이 2번째로 높은 동</strong>은 어디일까요? 위 랭킹 표에서 서초구를 필터링해 직접 확인한 뒤 골라보세요.</p>
+    </div>
+    <div class="quiz-options" id="quizOptions"></div>
+    <p class="quiz-result" id="quizResult"></p>
+  </section>
+
+  <section class="card about">
+    <h2>이 데이터는 어디서 왔나요?</h2>
+    <p>
+      국토교통부 <strong>아파트 매매 실거래가 자료</strong>(공공데이터포털 공개 API)의 2022년 서울특별시 거래분입니다.
+      전체 12,684건 중 거래금액 결측 33건을 제거한 <strong>12,651건</strong>을 사용하며,
+      전처리 과정(컬럼 정리 → 구/동 분리 → 면적 유형 분류 → 날짜 변환 → 결측 제거 → 평당금액 산출)은
+      수업 노트북 <em>「2-6-1 [미션] 서울시 아파트 실거래 데이터 분석」</em>과 동일합니다.
+    </p>
+    <p class="src-links">
+      공개 API: <a href="https://www.data.go.kr/data/15126469/openapi.do" target="_blank" rel="noopener">공공데이터포털 — 국토교통부 아파트 매매 실거래가 상세 자료</a> ·
+      원본 조회: <a href="https://rt.molit.go.kr" target="_blank" rel="noopener">국토교통부 실거래가 공개시스템</a>
+    </p>
+  </section>
+
+</main>
+
+<footer>
+  <div class="container">
+    <p>교육용 대시보드 · 데이터 기준 2022-01 ~ 2022-12 · 출처: 국토교통부 실거래가 공개시스템</p>
+  </div>
+</footer>
+
+<script src="app.js"></script>
+</body>
+</html>
