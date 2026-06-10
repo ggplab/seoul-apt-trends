@@ -3,17 +3,36 @@
  * 컬럼: [구, 동, 단지명, 전용면적(평), 거래금액(만원), 계약일, 층, 건축년도, 유형, 평당금액]
  */
 (async function () {
-  const res = await fetch("data/transactions.json");
-  const { rows, meta } = await res.json();
+  // ---- 데이터셋 (수업 2022 / 최근 1년) ----
+  const DATASETS = {
+    class: { url: "data/transactions.json", heroLabel: "2022년" },
+    recent: { url: "data/transactions_recent.json", heroLabel: "최근 1년" },
+  };
+  const cache = {};
+  async function loadDataset(key) {
+    if (!cache[key]) {
+      const res = await fetch(DATASETS[key].url);
+      cache[key] = await res.json();
+    }
+    return cache[key];
+  }
+  let { rows, meta } = await loadDataset("class");
 
   const GU = 0, DONG = 1, APT = 2, PYEONG = 3, PRICE = 4, DATE = 5, FLOOR = 6, BUILT = 7, TYPE = 8, PPP = 9;
   const TYPES = ["소형", "중형", "중대형", "대형"];
   const TYPE_COLORS = { 소형: "#60a5fa", 중형: "#2f6fed", 중대형: "#1b2a4a", 대형: "#f59e0b" };
-  const MONTHS = Array.from({ length: 12 }, (_, i) => i + 1);
   const DOW = ["월", "화", "수", "목", "금", "토", "일"];
 
+  // 데이터셋 전체 기준 월 목록 (필터와 무관하게 축 고정)
+  let monthKeys = [];
+  function computeMonths() {
+    monthKeys = [...new Set(rows.map((r) => r[DATE].slice(0, 7)))].sort();
+    const sameYear = monthKeys.every((k) => k.slice(0, 4) === monthKeys[0].slice(0, 4));
+    return monthKeys.map((k) => (sameYear ? `${+k.slice(5)}월` : `${k.slice(2, 4)}.${+k.slice(5)}`));
+  }
+
   // ---- 상태 ----
-  const state = { gu: "", dong: "", types: new Set(TYPES), topSort: PRICE };
+  const state = { dataset: "class", gu: "", dong: "", types: new Set(TYPES), topSort: PRICE };
 
   // ---- 포맷터 ----
   const comma = (n) => Math.round(n).toLocaleString("ko-KR");
@@ -34,8 +53,15 @@
   // ---- 셀렉트 초기화 ----
   const guSel = document.getElementById("guSelect");
   const dongSel = document.getElementById("dongSelect");
-  const gus = [...new Set(rows.map((r) => r[GU]))].sort((a, b) => a.localeCompare(b, "ko"));
-  gus.forEach((g) => guSel.add(new Option(g, g)));
+  function buildGuOptions() {
+    const keep = state.gu;
+    guSel.innerHTML = '<option value="">서울 전체</option>';
+    const gus = [...new Set(rows.map((r) => r[GU]))].sort((a, b) => a.localeCompare(b, "ko"));
+    gus.forEach((g) => guSel.add(new Option(g, g)));
+    state.gu = gus.includes(keep) ? keep : "";
+    guSel.value = state.gu;
+  }
+  buildGuOptions();
 
   function syncDongOptions() {
     dongSel.innerHTML = '<option value="">전체</option>';
@@ -74,7 +100,7 @@
 
   const monthlyChart = new Chart(document.getElementById("monthlyChart"), {
     data: {
-      labels: MONTHS.map((m) => `${m}월`),
+      labels: [],
       datasets: [
         { type: "bar", label: "거래량(건)", data: [], backgroundColor: "#c7d7f8", yAxisID: "y", order: 2, borderRadius: 4,
           datalabels: { display: true, anchor: "center", align: "center", color: "#3552a0", font: { size: 10, weight: 700 }, formatter: (v) => comma(v) } },
@@ -184,12 +210,15 @@
       ["kpiMean", "kpiMedian", "kpiPyeong"].forEach((id) => (document.getElementById(id).textContent = "—"));
     }
 
-    // 월별
-    const byMonth = MONTHS.map(() => ({ n: 0, ppp: 0 }));
+    // 월별 (데이터셋 전체 기준 월 축)
+    const monthLabels = computeMonths();
+    const monthIdx = Object.fromEntries(monthKeys.map((k, i) => [k, i]));
+    const byMonth = monthKeys.map(() => ({ n: 0, ppp: 0 }));
     data.forEach((r) => {
-      const m = +r[DATE].slice(5, 7) - 1;
+      const m = monthIdx[r[DATE].slice(0, 7)];
       byMonth[m].n++; byMonth[m].ppp += r[PPP];
     });
+    monthlyChart.data.labels = monthLabels;
     monthlyChart.data.datasets[0].data = byMonth.map((o) => o.n);
     monthlyChart.data.datasets[1].data = byMonth.map((o) => (o.n ? +(o.ppp / o.n).toFixed(0) : null));
     monthlyChart.update();
@@ -283,7 +312,33 @@
     });
   })();
 
-  document.getElementById("heroCount").textContent = comma(meta.total);
+  // ---- 데이터셋 토글 ----
+  const dsBtns = { class: document.getElementById("dsClass"), recent: document.getElementById("dsRecent") };
+  function updateHero() {
+    document.getElementById("heroCount").textContent = comma(meta.total);
+    document.getElementById("heroPeriod").textContent = state.dataset === "class" ? "2022년" : meta.period;
+    document.getElementById("footerPeriod").textContent = meta.period;
+  }
+  async function switchDataset(key) {
+    if (state.dataset === key) return;
+    Object.values(dsBtns).forEach((b) => (b.disabled = true));
+    try {
+      ({ rows, meta } = await loadDataset(key));
+      state.dataset = key;
+      state.dong = "";
+      buildGuOptions();
+      syncDongOptions();
+      updateHero();
+      render();
+      Object.entries(dsBtns).forEach(([k, b]) => b.classList.toggle("active", k === key));
+    } finally {
+      Object.values(dsBtns).forEach((b) => (b.disabled = false));
+    }
+  }
+  dsBtns.class.addEventListener("click", () => switchDataset("class"));
+  dsBtns.recent.addEventListener("click", () => switchDataset("recent"));
+
+  updateHero();
   syncDongOptions();
   render();
 })();
